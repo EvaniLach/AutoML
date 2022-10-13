@@ -528,6 +528,18 @@ def plots():
     for ax in axs1.flat:
         ax.set(xlabel='Function evaluations', ylabel='Loss')
     plt.show()
+    
+# Plot bonus_1    
+df, bp, x, y, EI_plot1, EI_plot2= tpe2("good_range", function_evaluations = 150, random_warmup = 30, gamma =0.2)
+history, configs = random_search('good_range', function_evaluations = 180)
+
+fig,axs = plt.subplots(nrows=1,ncols=2,figsize=(12,3))
+
+axs[0].plot(range(df.shape[0]), df['loss'])
+axs[0].title.set_text("TPE, loss per candidate")
+
+axs[1].plot(range(len(history)), history)
+axs[1].title.set_text("RS, loss per candidate")
 
 ###############################################################################################
 # Code that parses command line arguments and saves the results
