@@ -92,7 +92,7 @@ def condition(ranges, config, i):
             if (ranges[i]['condition'](config) == False):
                 return True
 
-# Check if current hyperparameter is active, specifically for nlayers
+# Check if current hyperparameter is active, specifically for all 'nodes_in_layers'
 def condition_check(x_star, i): 
     if 'nlayers' in x_star.keys():
         layers = x_star['nlayers']
@@ -104,7 +104,6 @@ def condition_check(x_star, i):
 def get_EI(samples, x, y, a, b, max_sd, max_sd_y, gamma):
     EI = []
     for j in range(len(samples)):   
-        # Set the density to 1, incase l(x) and/or g(x) is zero
         pd_lx = 0
         pd_gx = 1
         if len(x) > 0:
@@ -124,7 +123,8 @@ def return_node_list(x):
         if 'nodes_in_layer' in i:
             nodes.append(x[i])
     return nodes
-        
+
+# Returns a DF of the configurations
 def to_df(configs, loss):
 
     hyper_parameters=pd.DataFrame(columns=["configs","loss"])
@@ -134,14 +134,12 @@ def to_df(configs, loss):
     hyper_parameters_1 = (hyper_parameters["configs"].apply(pd.Series))
     hyper_parameters_1['loss'] = hyper_parameters["loss"]
     
-    
     return hyper_parameters_1
             
 # Function for dividing samples into good and bad dataframes    
 def good_bad(gamma, hyper_parameters):
 
     sorted_df=(hyper_parameters.sort_values(by=["loss"])).reset_index(drop=True)
-    
     index_value=int(gamma*(sorted_df.shape[0]))
     
     good_df = sorted_df.iloc[:index_value]
@@ -149,16 +147,23 @@ def good_bad(gamma, hyper_parameters):
             
     return good_df, bad_df
 
+# Sample from a truncated Gaussian
+# To sample from a mixture of truncated Gaussians, we first randomly pick a Gaussian from the list of values, then we sample from this Gaussian
 def sample_truncnorm(a, b, x, sd, n):
+    # First pick a random Gaussian
     index = np.random.choice(range(len(x)))
+    # Scipy doc mentions to transform the truncations as follows:
     a, b = (a - x[index]) / sd[index], (b - x[index]) / sd[index]
     samples = stats.truncnorm.rvs(a, b, loc=x[index], scale=sd[index], size=n)
     return samples
 
+# Returns the probability density of a value x 
+# Density is calculated by taking the sum of the densities of x in all Gaussians and dividing over number of Gaussians
+# This takes a list of all x values and sigma's
 def get_pdf(x_i, x, a, b, sd):
     n = len(x)
     total = 0
-    
+    # For each Gaussian, calculate density and sum them all
     for i in range(n):
         mean = x[i]
         sigma = sd[i]
@@ -166,17 +171,22 @@ def get_pdf(x_i, x, a, b, sd):
         total += stats.truncnorm.pdf(x_i, a, b, loc=mean, scale=sigma)
        # if error == 'error':
        #     print(x_i, a, b, mean, sigma)
-        
+    # Divide sum over number of Gaussians    
     return total/n
 
+# We implemented the bandwith selection from Ozaki et al. 
+# Reference: 'Multiobjective Tree-Structured Parzen Estimator for Computationally Expensive Optimization Problems', doi: 10.1145/3377930.3389817
 def scales(x, a, b):
     if len(x) > 1:
+        # Calculate distance to nearest neighbours
         diff = np.diff(x)
     else:
         diff = [0]
+    # Constant to prevent very small sigma    
     epsilon = (b-a)/min(100,len(x)+2)
     scales = []
     for i in range(0, len(diff)):
+        # Either greatest distance or epsilon
         max_ = max(diff[i-1], diff[i], epsilon)
         sigma = min(max_, b-a)
         scales.append(sigma)        
@@ -184,7 +194,7 @@ def scales(x, a, b):
     scales.insert(-1,min(max(diff[-1], epsilon), b-a))
     
     return scales
-
+# Sample uiformly
 def sample_uniform(hyperparameter, n):
     sample = np.random.choice(hyperparameter['range'], n)    
     return sample
@@ -193,6 +203,7 @@ def normal_dist(x , mean , sd):
     prob_density = (np.pi*sd) * np.exp(-0.5*((x-mean)/sd)**2)
     return prob_density
 
+# The density of categorical values is equal to its frequency in l(x) or g(x)
 def categorical_pdf(x, samples):
     n = len(samples)
     c = Counter(x)
@@ -203,6 +214,7 @@ def categorical_pdf(x, samples):
     return densities
 
 def calculate_EI(lx, gx):
+    # In case gx is very small or 0
     gx[gx < 0.0001] = 0.0001
     EI = lx/gx
     return EI
