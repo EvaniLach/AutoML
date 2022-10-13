@@ -4,6 +4,7 @@
 # IN GET_RANGES AND GET_CONFIG_PERFORMAMCE (IN SHORT: USE OUR SURROGATE PROBLEMS)
 #########################################################################################
 
+from pickle import GET
 import numpy as np
 import argparse
 import os
@@ -13,6 +14,7 @@ from scipy.stats import norm,truncnorm
 from scipy import stats
 from collections import Counter
 import warnings
+import matplotlib.pyplot as plt
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 from utils import GET_CONFIG_PERFORMANCE, GET_RANGES, SampleType, ParamType # make sure to make use of ParamType and SampleType in your code
@@ -207,6 +209,30 @@ def calculate_EI(lx, gx):
     EI = lx/gx
     return EI
 
+# Returns an array with the values for EI
+def plot_EI(x, y, a, b, gamma):
+    space = np.linspace(a, b, 100)
+    l_x = pdf_array(x, a, b)
+    g_x = pdf_array(y, a, b)
+    # If a value in g(x) == 0, divide by 1
+    # So i.e: if a samples hyperparameter is not in g(x), its EI = its pd in l(x)
+    g_x[g_x == 0] = 1
+    plot = (gamma + (1-gamma)*(l_x/g_x))
+    return plot
+
+# Returns an array with the values for a pdf
+def pdf_array(x, a, b):
+    scales_ = []
+    space = np.linspace(a, b, 100)
+    scales_ = scales(x, a, b)
+    array = np.zeros_like(space)
+    # Iterate through each sample
+    for i in range(len(x)):
+        dist = truncnorm(a, b,loc=x[i], scale=scales_[i])
+        # Get pdf values for its truncated Gaussian 
+        array += dist.pdf(space)
+    return array
+
 # n = number of candidate samples
 def tpe(problem, function_evaluations=150, random_warmup=30, gamma=0.2, n=2,**kwargs):
     """
@@ -310,13 +336,198 @@ def tpe(problem, function_evaluations=150, random_warmup=30, gamma=0.2, n=2,**kw
                     value = round(value)      
                 x_star[i] = value
         # Calculate loss and append to observations
-        configs_tpe.append(x_star)
-        x_star['loss'] = GET_CONFIG_PERFORMANCE(x_star, problem) 
-        history.append(GET_CONFIG_PERFORMANCE(x_star, problem))
-        hyperparameters = hyperparameters.append(x_star, ignore_index=True)            
-   
-    #print(configs)
-    return history, configs_tpe
+    configs_tpe.append(x_star)
+    x_star['loss'] = GET_CONFIG_PERFORMANCE(x_star, problem) 
+    history.append(GET_CONFIG_PERFORMANCE(x_star,problem))
+    hyperparameters = hyperparameters.append(x_star, ignore_index=True)            
+    # Seperate all found hyperparameters for plotting EI, l(x) and g(x)
+    x_final, y_final = good_bad(gamma, hyperparameters)
+    EI_plot1 = plot_EI(x_final.iloc[:,0].values,y_final.iloc[:,0].values, a, b, gamma)
+    EI_plot2 = plot_EI(x_final.iloc[:,1].values, y_final.iloc[:,1].values, a, b, gamma)
+    
+    l_x_plot_h1 = pdf_array(x_final.iloc[:,0].values,a,b)
+    l_x_plot_h2 = pdf_array(x_final.iloc[:,1].values,a,b)
+    g_x_plot_h1 = pdf_array(y_final.iloc[:,0].values,a,b)
+    g_x_plot_h2 = pdf_array(y_final.iloc[:,1].values,a,b)
+    
+    best_hp = hyperparameters.iloc[hyperparameters['loss'].idxmin()]
+    return hyperparameters, best_hp, x_final, y_final, EI_plot1, EI_plot2,l_x_plot_h1,g_x_plot_h1,l_x_plot_h2,g_x_plot_h2   
+
+def plots():
+    df, bp,x, y, EI_plot1, EI_plot2,l_x_plot_h1,g_x_plot_h1,l_x_plot_h2,g_x_plot_h2= tpe("interactive", function_evaluations = 120, random_warmup = 30, gamma =0.2)
+
+    a, b = -40, 40
+    space = np.linspace(a, b, 100)
+
+    #(Expected Improvement plot) 
+    fig,ax = plt.subplots()
+    ax.scatter(x["hyper1"],x["loss"],color="green",marker="o",label="Good distributions")
+    ax.set_xlabel("Hyperparameter 1", fontsize = 14)
+    ax.set_ylabel("Loss",color="black",fontsize=14)
+    ax.scatter(y["hyper1"],y["loss"],color="red",marker="o",label="Bad distributions")
+
+    ax3=ax.twinx()
+    ax3.plot(space, EI_plot1,color="black",label="EI of Hyperparameter 1")
+    ax3.set_ylabel("Expected Improvement",color="black",fontsize=14)
+    lines, labels = ax.get_legend_handles_labels()
+    lines2, labels2 = ax3.get_legend_handles_labels()
+    ax.legend(lines + lines2, labels + labels2, loc='lower right')
+    plt.show()
+
+    #(Distributions plot)
+
+    fig,ax = plt.subplots()
+    ax.scatter(x["hyper2"],x["loss"],color="green",marker="o",label="Good distributions")
+    ax.set_xlabel("Hyperparameter 2", fontsize = 14)
+    ax.set_ylabel("Loss",color="black",fontsize=14)
+    ax.scatter(y["hyper2"],y["loss"],color="red",marker="o",label="Bad distributions")
+
+    ax3=ax.twinx()
+    ax3.plot(space, EI_plot2,color="black",label="EI of Hyperparameter 2")
+    ax3.set_ylabel("Expected Improvement",color="black",fontsize=14)
+    lines, labels = ax.get_legend_handles_labels()
+    lines2, labels2 = ax3.get_legend_handles_labels()
+    ax.legend(lines + lines2, labels + labels2, loc='lower right')
+    plt.show()
+
+    fig,ax = plt.subplots()
+
+    ax.scatter(x["hyper1"],x["loss"],color="green",marker="o",label="Good distributions")
+    ax.set_xlabel("Hyperparameter 1", fontsize = 14)
+    ax.set_ylabel("Loss",color="black",fontsize=14)
+    ax.scatter(y["hyper1"],y["loss"],color="red",marker="o",label="Bad distributions")
+    ax3=ax.twinx()
+    ax3.plot(space, l_x_plot_h1,color="green",label="L(x)")
+    ax3.set_ylabel("L_x",color="black",fontsize=14)
+    ax3.plot(space, g_x_plot_h1,color="red",label="G(x)")
+    ax3.set_ylabel("Probability density",color="black",fontsize=14)
+    lines, labels = ax.get_legend_handles_labels()
+    lines2, labels2 = ax3.get_legend_handles_labels()
+    ax.legend(lines + lines2, labels + labels2, loc='upper right')
+    plt.show()
+
+    fig,ax = plt.subplots()
+    ax.scatter(x["hyper2"],x["loss"],color="green",marker="o",label="Good distributions")
+    ax.set_xlabel("Hyperparameter 2", fontsize = 14)
+    ax.set_ylabel("Loss",color="black",fontsize=14)
+    ax.scatter(y["hyper2"],y["loss"],color="red",marker="o",label="Bad distributions")
+    ax3=ax.twinx()
+    ax3.plot(space, l_x_plot_h2,color="green",label="L(x)")
+    ax3.plot(space, g_x_plot_h2,color="red",label="G(x)")
+    ax3.set_ylabel("Probability density",color="black",fontsize=14)
+    lines, labels = ax.get_legend_handles_labels()
+    lines2, labels2 = ax3.get_legend_handles_labels()
+    ax.legend(lines + lines2, labels + labels2, loc='upper right')
+    plt.show()
+
+    #Run and compare the performances and behaviors of random search and TPE on all three problems (interactive, bad range, good range).
+    trails = 10
+
+    fig,axs = plt.subplots(nrows=2,ncols=2,figsize=(25,10))
+
+    for j in range(trails):
+        losses,config = random_search("good_range")
+        loss=[]
+        for i in range(1,len(losses)):
+            loss.append(min(losses[:i]))        
+        axs[0][0].plot(range(len(losses)-1),loss)   
+        axs[0][0].title.set_text("Good Range for Random Search")
+        
+    for j in range(trails):
+        losses,config = random_search("bad_range")
+        loss=[]
+        for i in range(1,len(losses)):
+            loss.append(min(losses[:i]))        
+        axs[0][1].plot(range(len(losses)-1),loss) 
+        axs[0][1].title.set_text("Bad Range for Random Search")
+        
+    for j in range(trails):
+        losses,config = random_search("interactive")
+        loss=[]
+        for i in range(1,len(losses)):
+            loss.append(min(losses[:i]))        
+        axs[1][0].plot(range(len(losses)-1),loss) 
+        axs[1][0].title.set_text("Interactive for Random Search")
+        
+    for ax in axs.flat:
+        ax.set(xlabel='Function evaluations', ylabel='Loss')
+    plt.show()
+
+    fig,axs = plt.subplots(nrows=2,ncols=2,figsize=(25,10))
+
+    for j in range(trails):
+        df, bp,x, y, EI_plot1, EI_plot2,l_x_plot_h1,g_x_plot_h1,l_x_plot_h2,g_x_plot_h2 = tpe(problem='good_range', n=24,random_start = 10,gamma=0.1, function_evaluations= 150)
+        losses = df['loss'].values.tolist()
+        loss = []
+        for i in range(1,len(losses)):
+            loss.append(min(losses[:i]))        
+        axs[0][0].plot(range(len(losses)-1),loss)   
+        axs[0][0].title.set_text("Good Range for TPE")
+        
+    for j in range(trails):
+        df, bp,x, y, EI_plot1, EI_plot2,l_x_plot_h1,g_x_plot_h1,l_x_plot_h2,g_x_plot_h2 = tpe(problem='bad_range', n=24,random_start= 10,gamma=0.1, function_evaluations= 150)
+        losses = df['loss'].values.tolist()
+        loss = []
+        for i in range(1,len(losses)):
+            loss.append(min(losses[:i]))        
+        axs[0][1].plot(range(len(losses)-1),loss) 
+        axs[0][1].title.set_text("Bad Range for TPE")
+        
+    for j in range(trails):
+        df, bp,x, y, EI_plot1, EI_plot2,l_x_plot_h1,g_x_plot_h1,l_x_plot_h2,g_x_plot_h2 = tpe(problem='interactive',n=24,random_start= 10,gamma=0.1, function_evaluations= 150)
+        losses = df['loss'].values.tolist()
+        loss = []
+        for i in range(1,len(losses)):
+            loss.append(min(losses[:i]))        
+        axs[1][0].plot(range(len(losses)-1),loss) 
+        axs[1][0].title.set_text("Interactive for TPE")
+        
+    for ax in axs.flat:
+        ax.set(xlabel='Function evaluations', ylabel='Loss')
+    plt.show()
+
+    #different values of gamma.
+
+    fig,axs1 = plt.subplots(nrows=2,ncols=2,figsize=(25,10))
+    for j in range(trails):
+        hyperparameters,EI = tpe("good_range",gamma=0.25)
+        losses = hyperparameters["loss"].values.tolist()
+        loss=[]
+        for i in range(1,len(losses)):
+            loss.append(min(losses[:i]))        
+        axs1[0][0].plot(range(len(losses)-1),loss)   
+        axs1[0][0].title.set_text("Gamma = 0.25")
+
+    for j in range(trails):
+        hyperparameters,EI = tpe("good_range",gamma=0.5)
+        losses = hyperparameters["loss"].values.tolist()
+        loss=[]
+        for i in range(1,len(losses)):
+            loss.append(min(losses[:i]))        
+        axs1[0][1].plot(range(len(losses)-1),loss)   
+        axs1[0][1].title.set_text("Gamma = 0.5")
+        
+    for j in range(trails):
+        hyperparameters,EI = tpe("good_range",gamma=0.75)
+        losses = hyperparameters["loss"].values.tolist()
+        loss=[]
+        for i in range(1,len(losses)):
+            loss.append(min(losses[:i]))        
+        axs1[1][0].plot(range(len(losses)-1),loss)   
+        axs1[1][0].title.set_text("Gamma = 0.75")
+
+    for j in range(trails):
+        hyperparameters,EI = tpe("good_range",gamma=1)
+        losses = hyperparameters["loss"].values.tolist()
+        loss=[]
+        for i in range(1,len(losses)):
+            loss.append(min(losses[:i]))        
+        axs1[1][1].plot(range(len(losses)-1),loss)   
+        axs1[1][1].title.set_text("Gamma = 1")
+
+    for ax in axs1.flat:
+        ax.set(xlabel='Function evaluations', ylabel='Loss')
+    plt.show()
 
 ###############################################################################################
 # Code that parses command line arguments and saves the results
