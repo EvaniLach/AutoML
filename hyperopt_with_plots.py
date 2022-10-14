@@ -27,7 +27,7 @@ parser.add_argument('--gamma', type=float, default=0.2)
 parser.add_argument('--random_warmup', type=int, default=30)
 parser.add_argument('--seed', type=int, default=42)
     
-
+# Please note, we forgot to specify a random seed. However, plots should remain roughly the same and thus the conclusions/interpretations as well.
 def random_search(problem, function_evaluations=150, **kwargs):
     """
     Function that performs random search on the given problem. It uses the 
