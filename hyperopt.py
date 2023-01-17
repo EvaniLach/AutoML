@@ -263,12 +263,12 @@ def tpe(problem, function_evaluations=150, random_warmup=30, gamma=0.2, n=2,**kw
         x_star = {}
         
         # Iterate through each hyperparameter
-        for i in good_df.columns.difference(['loss']): 
+        for i in good_df.columns.difference(['loss']):
             # Seperate into good and bad samples
             x = good_df[i].dropna().values.tolist()
             y = bad_df[i].dropna().values.tolist()
             # Add back together for sampling
-            full = x + y
+            #full = x + y
             # Define truncation boundaries
             a = RANGES[i]['range'][0]
             b = RANGES[i]['range'][1]
@@ -293,17 +293,19 @@ def tpe(problem, function_evaluations=150, random_warmup=30, gamma=0.2, n=2,**kw
                 if RANGES[i]['sample'] == 1:
                     x = np.log(x)
                     y = np.log(y)
-                    full = np.log(full)
+                    #full = np.log(full)
                     a, b = np.log(a), np.log(b)
                     
                 # Sort because we need the standard deviation to the furthest neighbour
                 x.sort()                  
                 y.sort()
-                full.sort()
+                #full.sort()
                 # Calculate sigma for getting the density from the Gaussians
-                std_full = scales(full, a, b)
+                std_x = scales(x, a, b)
                 # Sample from truncated gaussians
-                samples = sample_truncnorm(a, b, full, std_full, n)
+                if len(x)==0:
+                    x = [0]
+                samples = sample_truncnorm(a, b, x, std_x, n)
                 # In case l(x) or g(x) does not contain samples: the sigma is 0
                 max_sd, max_sd_y = 0, 0
                 if len(x) > 0:
